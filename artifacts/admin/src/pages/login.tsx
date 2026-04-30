@@ -1,21 +1,34 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ShoppingBag, Lock, User, ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { z } from "zod";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-function validateUsername(value: string): string | null {
-  if (!value.trim()) return "Username is required";
-  if (value.trim().length < 3) return "Username must be at least 3 characters";
-  return null;
-}
+const loginSchema = z.object({
+  username: z
+    .string()
+    .min(1, "Username is required")
+    .min(3, "Username must be at least 3 characters"),
+  password: z
+    .string()
+    .min(1, "Password is required")
+    .min(8, "Password must be at least 8 characters"),
+});
 
-function validatePassword(value: string): string | null {
-  if (!value) return "Password is required";
-  if (value.length < 8) return "Password must be at least 8 characters";
-  return null;
+type LoginFields = z.infer<typeof loginSchema>;
+type LoginErrors = Partial<Record<keyof LoginFields, string>>;
+
+function parseLoginErrors(values: LoginFields): LoginErrors {
+  const result = loginSchema.safeParse(values);
+  if (result.success) return {};
+  const flat = result.error.flatten().fieldErrors;
+  return {
+    username: flat.username?.[0],
+    password: flat.password?.[0],
+  };
 }
 
 export default function Login() {
@@ -23,29 +36,23 @@ export default function Login() {
   const { state, login, clearError } = useAdminAuth();
   const { toast } = useToast();
 
-  // Credentials form
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Field-level validation errors (shown on blur or submit)
-  const [usernameError, setUsernameError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<LoginErrors>({});
   const [touched, setTouched] = useState({ username: false, password: false });
 
-  // MFA form
   const [totp, setTotp] = useState("");
   const [tempToken, setTempToken] = useState<string | null>(null);
   const [step, setStep] = useState<"credentials" | "mfa">("credentials");
 
-  // Mount
   useEffect(() => {
     if (state.user && state.accessToken) {
       setLocation("/dashboard");
     }
   }, [state.user, state.accessToken, setLocation]);
 
-  // Handle errors
   useEffect(() => {
     if (state.error) {
       toast({
@@ -57,44 +64,40 @@ export default function Login() {
     }
   }, [state.error, toast, clearError]);
 
+  function validateField(field: keyof LoginFields, values: LoginFields) {
+    const errs = parseLoginErrors(values);
+    setErrors((prev) => ({ ...prev, [field]: errs[field] }));
+  }
+
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate all fields on submit
-    const uErr = validateUsername(username);
-    const pErr = validatePassword(password);
-    setUsernameError(uErr);
-    setPasswordError(pErr);
+    const values: LoginFields = { username, password };
+    const allErrors = parseLoginErrors(values);
+    setErrors(allErrors);
     setTouched({ username: true, password: true });
-    if (uErr || pErr) return;
+    if (allErrors.username || allErrors.password) return;
 
     try {
       await login(username.trim(), password);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
     } catch (err: any) {
       if (err.requiresMfa && err.tempToken) {
-        // MFA required - switch to MFA step
         setTempToken(err.tempToken);
         setStep("mfa");
         setTotp("");
-        toast({
-          title: "MFA Required",
-          description: "Please enter your authenticator code",
-        });
+        toast({ title: "MFA Required", description: "Please enter your authenticator code" });
       }
-      // Other errors are handled by the error effect above
     }
   };
 
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!totp.trim() || !tempToken) return;
-
     try {
       await login(username, password, totp, tempToken);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
-    } catch (err: any) {
-      // Error handled by effect
+    } catch (_err) {
+      // Handled by the error effect
     }
   };
 
@@ -106,7 +109,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <img
           src={`${import.meta.env.BASE_URL}images/login-bg.png`}
@@ -132,62 +134,64 @@ export default function Login() {
           {step === "credentials" ? (
             <form onSubmit={handleCredentialsSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground ml-1">Username</label>
+                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="username">Username</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <User className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <Input
+                    id="username"
                     type="text"
                     name="username"
                     placeholder="admin"
                     value={username}
                     onChange={(e) => {
                       setUsername(e.target.value);
-                      if (touched.username) setUsernameError(validateUsername(e.target.value));
+                      if (touched.username) validateField("username", { username: e.target.value, password });
                     }}
                     onBlur={() => {
                       setTouched((t) => ({ ...t, username: true }));
-                      setUsernameError(validateUsername(username));
+                      validateField("username", { username, password });
                     }}
-                    aria-invalid={!!usernameError}
-                    aria-describedby={usernameError ? "username-error" : undefined}
-                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${usernameError ? " border-destructive" : ""}`}
+                    aria-invalid={!!errors.username}
+                    aria-describedby={errors.username ? "username-error" : undefined}
+                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.username ? " border-destructive" : ""}`}
                     autoComplete="username"
                     autoFocus
                     disabled={state.isLoading}
                   />
                 </div>
-                {usernameError && (
+                {errors.username && (
                   <p id="username-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    {usernameError}
+                    {errors.username}
                   </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground ml-1">Password</label>
+                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="password">Password</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <Input
+                    id="password"
                     type={showPassword ? "text" : "password"}
                     name="password"
                     placeholder="Enter password..."
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      if (touched.password) setPasswordError(validatePassword(e.target.value));
+                      if (touched.password) validateField("password", { username, password: e.target.value });
                     }}
                     onBlur={() => {
                       setTouched((t) => ({ ...t, password: true }));
-                      setPasswordError(validatePassword(password));
+                      validateField("password", { username, password });
                     }}
-                    aria-invalid={!!passwordError}
-                    aria-describedby={passwordError ? "password-error" : undefined}
-                    className={`pl-11 pr-12 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${passwordError ? " border-destructive" : ""}`}
+                    aria-invalid={!!errors.password}
+                    aria-describedby={errors.password ? "password-error" : undefined}
+                    className={`pl-11 pr-12 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.password ? " border-destructive" : ""}`}
                     autoComplete="current-password"
                     disabled={state.isLoading}
                   />
@@ -200,10 +204,10 @@ export default function Login() {
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
-                {passwordError && (
+                {errors.password && (
                   <p id="password-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    {passwordError}
+                    {errors.password}
                   </p>
                 )}
               </div>

@@ -6,19 +6,36 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Mail, AlertCircle } from "lucide-react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+const forgotPasswordSchema = z.object({
+  email: z.string().min(1, "Email is required").email("Please enter a valid email address"),
+});
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+
+  function validateEmail(value: string): string | null {
+    const result = forgotPasswordSchema.safeParse({ email: value });
+    if (result.success) return null;
+    return result.error.flatten().fieldErrors.email?.[0] ?? null;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim()) return;
+    const fieldErr = validateEmail(email);
+    setEmailError(fieldErr);
+    setTouched(true);
+    if (fieldErr) return;
+
     setSubmitting(true);
     setError(null);
     try {
@@ -29,9 +46,6 @@ export default function ForgotPassword() {
       });
       if (!response.ok && response.status !== 200) {
         const data = await response.json().catch(() => ({}));
-        // We still tell the user "if it exists you'll get a link" for
-        // any 4xx response — except for blatantly invalid inputs (400 with
-        // a useful error) which we surface so they can fix the typo.
         if (response.status === 400 && data?.error) {
           setError(String(data.error));
         } else {
@@ -41,8 +55,6 @@ export default function ForgotPassword() {
         setSubmitted(true);
       }
     } catch (err) {
-      // Network failure: still show the success screen so we don't leak
-      // anything; surface a quiet message in console for ops.
       console.error("[forgot-password] network error:", err);
       setSubmitted(true);
     } finally {
@@ -103,13 +115,27 @@ export default function ForgotPassword() {
                     inputMode="email"
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (touched) setEmailError(validateEmail(e.target.value));
+                    }}
+                    onBlur={() => {
+                      setTouched(true);
+                      setEmailError(validateEmail(email));
+                    }}
+                    aria-invalid={!!emailError}
+                    aria-describedby={emailError ? "email-error" : undefined}
                     placeholder="you@example.com"
-                    className="pl-9 h-11"
-                    required
+                    className={`pl-9 h-11${emailError ? " border-destructive" : ""}`}
                     data-testid="input-forgot-email"
                   />
                 </div>
+                {emailError && (
+                  <p id="email-error" className="flex items-center gap-1 text-sm text-destructive" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    {emailError}
+                  </p>
+                )}
               </div>
 
               {error && (
@@ -121,7 +147,7 @@ export default function ForgotPassword() {
               <Button
                 type="submit"
                 className="w-full h-11"
-                disabled={submitting || !email.trim()}
+                disabled={submitting}
                 data-testid="button-send-reset-link"
               >
                 {submitting ? (
