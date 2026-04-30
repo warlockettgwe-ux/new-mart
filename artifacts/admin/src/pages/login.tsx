@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ShoppingBag, Lock, Mail, ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { ShoppingBag, Lock, User, ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -9,16 +9,15 @@ import { Input } from "@/components/ui/input";
 
 /**
  * Login form schema — mirrors server-side validation rules.
- * Admin accounts may log in with either their email address or their username;
- * the server-side adminLogin service resolves both. The `email` field is
- * validated as a proper email address so the user gets instant feedback for
- * obvious typos before the request is ever sent.
+ * The server accepts both a username AND an email address as the identifier,
+ * so we validate only the minimum constraints shared by both: non-empty and
+ * at least 3 characters. Emails satisfy this naturally; so do usernames.
  */
 const loginSchema = z.object({
-  email: z
+  identifier: z
     .string()
-    .min(1, "Email is required")
-    .email("Please enter a valid email address"),
+    .min(1, "Email or username is required")
+    .min(3, "Must be at least 3 characters"),
   password: z
     .string()
     .min(1, "Password is required")
@@ -33,7 +32,7 @@ function parseLoginErrors(values: LoginFields): LoginErrors {
   if (result.success) return {};
   const flat = result.error.flatten().fieldErrors;
   return {
-    email: flat.email?.[0],
+    identifier: flat.identifier?.[0],
     password: flat.password?.[0],
   };
 }
@@ -43,12 +42,12 @@ export default function Login() {
   const { state, login, clearError } = useAdminAuth();
   const { toast } = useToast();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const [errors, setErrors] = useState<LoginErrors>({});
-  const [touched, setTouched] = useState({ email: false, password: false });
+  const [touched, setTouched] = useState({ identifier: false, password: false });
 
   const [totp, setTotp] = useState("");
   const [tempToken, setTempToken] = useState<string | null>(null);
@@ -78,15 +77,15 @@ export default function Login() {
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const values: LoginFields = { email, password };
+    const values: LoginFields = { identifier, password };
     const allErrors = parseLoginErrors(values);
     setErrors(allErrors);
-    setTouched({ email: true, password: true });
-    if (allErrors.email || allErrors.password) return;
+    setTouched({ identifier: true, password: true });
+    if (allErrors.identifier || allErrors.password) return;
 
     try {
-      // The server login endpoint accepts email or username as the `username` field
-      await login(email.trim().toLowerCase(), password);
+      // Server accepts email or username as the `username` field
+      await login(identifier.trim().toLowerCase(), password);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
     } catch (err: any) {
       if (err.requiresMfa && err.tempToken) {
@@ -102,7 +101,7 @@ export default function Login() {
     e.preventDefault();
     if (!totp.trim() || !tempToken) return;
     try {
-      await login(email.trim().toLowerCase(), password, totp, tempToken);
+      await login(identifier.trim().toLowerCase(), password, totp, tempToken);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
     } catch (_err) {
       // Handled by the error effect
@@ -135,45 +134,46 @@ export default function Login() {
             </div>
             <h1 className="font-display text-3xl font-bold text-foreground">AJKMart Admin</h1>
             <p className="text-muted-foreground mt-2 font-medium">
-              {step === "credentials" ? "Sign in with your email" : "Enter your authenticator code"}
+              {step === "credentials" ? "Sign in with your credentials" : "Enter your authenticator code"}
             </p>
           </div>
 
           {step === "credentials" ? (
             <form onSubmit={handleCredentialsSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="email">Email</label>
+                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="identifier">
+                  Email or Username
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-muted-foreground" />
+                    <User className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <Input
-                    id="email"
-                    type="email"
-                    name="email"
-                    inputMode="email"
-                    placeholder="you@example.com"
-                    value={email}
+                    id="identifier"
+                    type="text"
+                    name="identifier"
+                    placeholder="admin or you@example.com"
+                    value={identifier}
                     onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (touched.email) validateField("email", { email: e.target.value, password });
+                      setIdentifier(e.target.value);
+                      if (touched.identifier) validateField("identifier", { identifier: e.target.value, password });
                     }}
                     onBlur={() => {
-                      setTouched((t) => ({ ...t, email: true }));
-                      validateField("email", { email, password });
+                      setTouched((t) => ({ ...t, identifier: true }));
+                      validateField("identifier", { identifier, password });
                     }}
-                    aria-invalid={!!errors.email}
-                    aria-describedby={errors.email ? "email-error" : undefined}
-                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.email ? " border-destructive" : ""}`}
-                    autoComplete="email"
+                    aria-invalid={!!errors.identifier}
+                    aria-describedby={errors.identifier ? "identifier-error" : undefined}
+                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.identifier ? " border-destructive" : ""}`}
+                    autoComplete="username"
                     autoFocus
                     disabled={state.isLoading}
                   />
                 </div>
-                {errors.email && (
-                  <p id="email-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
+                {errors.identifier && (
+                  <p id="identifier-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    {errors.email}
+                    {errors.identifier}
                   </p>
                 )}
               </div>
@@ -192,11 +192,11 @@ export default function Login() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      if (touched.password) validateField("password", { email, password: e.target.value });
+                      if (touched.password) validateField("password", { identifier, password: e.target.value });
                     }}
                     onBlur={() => {
                       setTouched((t) => ({ ...t, password: true }));
-                      validateField("password", { email, password });
+                      validateField("password", { identifier, password });
                     }}
                     aria-invalid={!!errors.password}
                     aria-describedby={errors.password ? "password-error" : undefined}
@@ -300,7 +300,7 @@ export default function Login() {
           <p className="text-xs text-muted-foreground text-center mt-6 leading-relaxed">
             {step === "credentials" ? (
               <>
-                Sign in with your admin email address.
+                Sign in with your admin email address or username.
                 <br />
                 Contact your system administrator if you need access.
               </>
