@@ -15,6 +15,8 @@ import { generateId } from "../../lib/id.js";
 import { generateRoleTemplate } from "../../services/communicationAI.js";
 import { logger } from "../../lib/logger.js";
 import { getIO } from "../../lib/socketio.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
+import { COMMUNICATION_PERMS } from "../../middlewares/permissions-map.js";
 
 const router = Router();
 
@@ -293,7 +295,7 @@ router.get("/communication/flags", async (req, res) => {
   }
 });
 
-router.patch("/communication/flags/:id/resolve", async (req: any, res) => {
+router.patch("/communication/flags/:id/resolve", requirePermission(COMMUNICATION_PERMS.manage), async (req: any, res) => {
   try {
     const { id } = req.params;
     const adminId = req.adminPayload?.adminId || null;
@@ -317,7 +319,7 @@ router.get("/communication/roles", async (_req, res) => {
   }
 });
 
-router.post("/communication/roles", async (req, res) => {
+router.post("/communication/roles", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { name, description, permissions, rolePairRules, categoryRules, timeWindows, messageLimits, isPreset } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
@@ -342,7 +344,7 @@ router.post("/communication/roles", async (req, res) => {
   return;
 });
 
-router.put("/communication/roles/:id", async (req, res) => {
+router.put("/communication/roles/:id", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, permissions, rolePairRules, categoryRules, timeWindows, messageLimits } = req.body;
@@ -364,7 +366,7 @@ router.put("/communication/roles/:id", async (req, res) => {
   }
 });
 
-router.delete("/communication/roles/:id", async (req, res) => {
+router.delete("/communication/roles/:id", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { id } = req.params;
     await db.delete(communicationRolesTable).where(eq(communicationRolesTable.id, id));
@@ -374,7 +376,7 @@ router.delete("/communication/roles/:id", async (req, res) => {
   }
 });
 
-router.post("/communication/roles/ai-generate", async (req: any, res) => {
+router.post("/communication/roles/ai-generate", requirePermission(COMMUNICATION_PERMS.manage), async (req: any, res) => {
   try {
     const { description } = req.body;
     if (!description) return res.status(400).json({ error: "Description is required" });
@@ -388,7 +390,7 @@ router.post("/communication/roles/ai-generate", async (req: any, res) => {
   return;
 });
 
-router.post("/communication/users/:id/block", async (req, res) => {
+router.post("/communication/users/:id/block", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { id } = req.params;
     await db.update(usersTable).set({ commBlocked: true, updatedAt: new Date() }).where(eq(usersTable.id, id));
@@ -398,7 +400,7 @@ router.post("/communication/users/:id/block", async (req, res) => {
   }
 });
 
-router.post("/communication/users/:id/unblock", async (req, res) => {
+router.post("/communication/users/:id/unblock", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { id } = req.params;
     await db.update(usersTable).set({ commBlocked: false, updatedAt: new Date() }).where(eq(usersTable.id, id));
@@ -420,7 +422,7 @@ router.get("/communication/settings", async (_req, res) => {
   }
 });
 
-router.put("/communication/settings", async (req, res) => {
+router.put("/communication/settings", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const settings = req.body as Record<string, string>;
     for (const [key, value] of Object.entries(settings)) {
@@ -468,7 +470,7 @@ router.get("/communication/ajk-ids", async (req, res) => {
   }
 });
 
-router.put("/communication/ajk-ids/:userId", async (req, res) => {
+router.put("/communication/ajk-ids/:userId", requirePermission(COMMUNICATION_PERMS.manage), async (req, res) => {
   try {
     const { userId } = req.params;
     const { ajkId } = req.body;

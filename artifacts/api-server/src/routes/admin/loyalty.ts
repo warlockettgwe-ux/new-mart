@@ -8,6 +8,8 @@ import {
   sendUserNotification,
 } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
+import { FINANCE_PERMS } from "../../middlewares/permissions-map.js";
 
 const router = Router();
 
@@ -93,7 +95,7 @@ router.get("/loyalty/users", async (req, res) => {
   sendSuccess(res, { users: enrichedUsers, total: enrichedUsers.length });
 });
 
-router.post("/loyalty/users/:id/adjust", async (req, res) => {
+router.post("/loyalty/users/:id/adjust", requirePermission(FINANCE_PERMS.manage), async (req, res) => {
   const userId = req.params["id"]!;
   const { amount, reason, type } = req.body as { amount?: number; reason?: string; type?: string };
 

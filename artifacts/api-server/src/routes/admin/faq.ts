@@ -4,6 +4,8 @@ import { faqsTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { generateId } from "../../lib/id.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound } from "../../lib/response.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
+import { CONTENT_PERMS } from "../../middlewares/permissions-map.js";
 
 const router = Router();
 
@@ -26,7 +28,7 @@ router.get("/", async (_req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { category, question, answer, sortOrder, isActive } = req.body as {
     category?: string; question?: string; answer?: string; sortOrder?: number; isActive?: boolean;
   };
@@ -50,7 +52,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { id } = req.params;
   const { category, question, answer, sortOrder, isActive } = req.body as {
     category?: string; question?: string; answer?: string; sortOrder?: number; isActive?: boolean;
@@ -70,7 +72,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { id } = req.params;
   try {
     const [deleted] = await db.delete(faqsTable).where(eq(faqsTable.id, id)).returning();

@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import { serviceZonesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../../lib/response.js";
+import { requirePermission } from "../../../middlewares/require-permission.js";
+import { FLEET_PERMS } from "../../../middlewares/permissions-map.js";
 import { invalidateZoneCache } from "../../../lib/geofence.js";
 import { getCachedSettings } from "../../../middleware/security.js";
 import type { AdminRequest } from "../../admin-shared.js";
@@ -22,7 +24,7 @@ router.get("/", async (_req, res) => {
 });
 
 /* ── POST /admin/service-zones — create a zone ── */
-router.post("/", async (req, res) => {
+router.post("/", requirePermission(FLEET_PERMS.manage), async (req, res) => {
   const {
     name, city, lat, lng, radiusKm,
     isActive, appliesToRides, appliesToOrders, appliesToParcel, notes,
@@ -63,7 +65,7 @@ router.post("/", async (req, res) => {
 });
 
 /* ── PUT /admin/service-zones/:id — update a zone ── */
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission(FLEET_PERMS.manage), async (req, res) => {
   const id = parseInt(req.params["id"]!, 10);
   if (isNaN(id)) { sendValidationError(res, "Invalid zone id"); return; }
 
@@ -111,7 +113,7 @@ router.put("/:id", async (req, res) => {
 });
 
 /* ── DELETE /admin/service-zones/:id ── */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission(FLEET_PERMS.manage), async (req, res) => {
   const id = parseInt(req.params["id"]!, 10);
   if (isNaN(id)) { sendValidationError(res, "Invalid zone id"); return; }
 

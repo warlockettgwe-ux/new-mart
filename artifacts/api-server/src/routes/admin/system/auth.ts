@@ -77,6 +77,7 @@ import {
 import { UserService } from "../../../services/admin-user.service.js";
 import { AuditService } from "../../../services/admin-audit.service.js";
 import { requirePermission } from "../../../middlewares/require-permission.js";
+import { SYSTEM_PERMS } from "../../../middlewares/permissions-map.js";
 import { logAdminAudit } from "../../../middlewares/admin-audit.js";
 
 const router = Router();
@@ -244,7 +245,7 @@ router.get("/admin-accounts", async (_req, res) => {
   });
 });
 
-router.post("/admin-accounts", async (req, res) => {
+router.post("/admin-accounts", requirePermission(SYSTEM_PERMS.adminManage), async (req, res) => {
   const adminReq = req as AdminRequest;
   const body = req.body as Record<string, unknown>;
 
@@ -300,7 +301,7 @@ router.post("/admin-accounts", async (req, res) => {
   }
 });
 
-router.patch("/admin-accounts/:id", async (req, res) => {
+router.patch("/admin-accounts/:id", requirePermission(SYSTEM_PERMS.adminManage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, any> = {};
   const targetId = req.params["id"]!;
@@ -366,7 +367,7 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   });
 });
 
-router.delete("/admin-accounts/:id", async (req, res) => {
+router.delete("/admin-accounts/:id", requirePermission(SYSTEM_PERMS.adminManage), async (req, res) => {
   await db
     .delete(adminAccountsTable)
     .where(eq(adminAccountsTable.id, req.params["id"]!));

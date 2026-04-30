@@ -23,6 +23,7 @@ import {
 } from "../../../services/permissions.service.js";
 import { adminAuth, addAuditEntry, type AdminRequest } from "../../admin-shared.js";
 import { requirePermission, requireAnyPermission } from "../../../middlewares/require-permission.js";
+import { SYSTEM_PERMS } from "../../../middlewares/permissions-map.js";
 import {
   sendSuccess, sendError, sendNotFound, sendValidationError,
 } from "../../../lib/response.js";
@@ -60,7 +61,7 @@ const createRoleSchema = z.object({
   permissions: z.array(z.string()).optional(),
 });
 
-router.post("/roles", requirePermission("system.roles.manage"), async (req, res) => {
+router.post("/roles", requirePermission(SYSTEM_PERMS.rolesManage), async (req, res) => {
   const aReq = req as AdminRequest;
   try {
     const body = createRoleSchema.parse(req.body);
@@ -84,7 +85,7 @@ const updateRoleSchema = z.object({
   description: z.string().max(512).optional(),
 });
 
-router.patch("/roles/:id", requirePermission("system.roles.manage"), async (req, res) => {
+router.patch("/roles/:id", requirePermission(SYSTEM_PERMS.rolesManage), async (req, res) => {
   const aReq = req as AdminRequest;
   try {
     const body = updateRoleSchema.parse(req.body);
@@ -104,7 +105,7 @@ router.patch("/roles/:id", requirePermission("system.roles.manage"), async (req,
   }
 });
 
-router.delete("/roles/:id", requirePermission("system.roles.manage"), async (req, res) => {
+router.delete("/roles/:id", requirePermission(SYSTEM_PERMS.rolesManage), async (req, res) => {
   const aReq = req as AdminRequest;
   const result = await deleteRole(req.params["id"]!);
   if (!result.deleted) {
@@ -124,7 +125,7 @@ router.delete("/roles/:id", requirePermission("system.roles.manage"), async (req
 const setPermsSchema = z.object({ permissions: z.array(z.string()) });
 
 router.put("/roles/:id/permissions",
-  requirePermission("system.roles.manage"),
+  requirePermission(SYSTEM_PERMS.rolesManage),
   async (req, res) => {
     const aReq = req as AdminRequest;
     try {
@@ -155,7 +156,7 @@ router.put("/roles/:id/permissions",
 const setAdminRolesSchema = z.object({ roleIds: z.array(z.string()) });
 
 router.put("/admins/:adminId/roles",
-  requirePermission("system.roles.manage"),
+  requirePermission(SYSTEM_PERMS.rolesManage),
   async (req, res) => {
     const aReq = req as AdminRequest;
     try {

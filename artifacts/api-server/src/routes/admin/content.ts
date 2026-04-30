@@ -24,6 +24,8 @@ import {
   type AdminRequest, type TranslationKey,
 } from "../admin-shared.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
+import { CONTENT_PERMS } from "../../middlewares/permissions-map.js";
 
 const router = Router();
 router.get("/products", async (_req, res) => {
@@ -69,7 +71,7 @@ router.get("/products/pending", async (_req, res) => {
   });
 });
 
-router.patch("/products/:id/approve", async (req, res) => {
+router.patch("/products/:id/approve", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { note } = req.body;
   /* Fetch previous state before approve to detect back-in-stock transition */
   const [prevProduct] = await db.select().from(productsTable).where(eq(productsTable.id, req.params["id"]!)).limit(1);
@@ -116,7 +118,7 @@ router.patch("/products/:id/approve", async (req, res) => {
   sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
-router.patch("/products/:id/reject", async (req, res) => {
+router.patch("/products/:id/reject", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { reason } = req.body;
   if (!reason) { sendValidationError(res, "reason is required"); return; }
   const [product] = await db
@@ -162,7 +164,7 @@ async function ensureSystemVendor(): Promise<void> {
   }
 }
 
-router.post("/products", async (req, res) => {
+router.post("/products", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { name, description, price, originalPrice, category, type, unit, vendorName, inStock, deliveryTime, image } = req.body;
   if (!name || !price || !category) {
     sendValidationError(res, "name, price, and category are required");
@@ -189,7 +191,7 @@ router.post("/products", async (req, res) => {
   sendCreated(res, { ...product!, price: parseFloat(product!.price) });
 });
 
-router.patch("/products/:id", async (req, res) => {
+router.patch("/products/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { name, description, price, originalPrice, category, unit, inStock, stock, vendorName, deliveryTime, image } = req.body;
   const updates: Partial<typeof productsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -239,7 +241,7 @@ router.patch("/products/:id", async (req, res) => {
   sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
-router.delete("/products/:id", async (req, res) => {
+router.delete("/products/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   await db.delete(productsTable).where(eq(productsTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
@@ -306,7 +308,7 @@ router.get("/broadcast/recipients/count", async (req, res) => {
   });
 });
 
-router.post("/broadcast", async (req, res) => {
+router.post("/broadcast", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { title, body, titleKey, bodyKey, type = "system", icon = "notifications-outline", targetRole } = req.body;
   if (!title && !titleKey) { sendValidationError(res, "title or titleKey required"); return; }
   if (!body && !bodyKey) { sendValidationError(res, "body or bodyKey required"); return; }
@@ -368,7 +370,7 @@ router.get("/categories/tree", async (req, res) => {
   sendSuccess(res, { categories: tree });
 });
 
-router.post("/categories", async (req, res) => {
+router.post("/categories", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
   if (!name || !type) {
     sendValidationError(res, "name and type are required");
@@ -389,7 +391,7 @@ router.post("/categories", async (req, res) => {
   sendCreated(res, category);
 });
 
-router.patch("/categories/:id", async (req, res) => {
+router.patch("/categories/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
 
   const updates: Record<string, any> = { updatedAt: new Date() };
@@ -414,7 +416,7 @@ router.patch("/categories/:id", async (req, res) => {
   sendSuccess(res, updated);
 });
 
-router.delete("/categories/:id", async (req, res) => {
+router.delete("/categories/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const id = req.params["id"]!;
 
   await db
@@ -435,7 +437,7 @@ router.delete("/categories/:id", async (req, res) => {
   sendSuccess(res, { success: true });
 });
 
-router.post("/categories/reorder", async (req, res) => {
+router.post("/categories/reorder", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { items } = req.body;
   if (!Array.isArray(items)) {
     sendValidationError(res, "items array required");
@@ -480,7 +482,7 @@ router.get("/banners", async (req, res) => {
   sendSuccess(res, { banners: mapped, total: mapped.length });
 });
 
-router.post("/banners", async (req, res) => {
+router.post("/banners", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.title) {
     sendValidationError(res, "title is required"); return;
@@ -505,7 +507,7 @@ router.post("/banners", async (req, res) => {
   sendCreated(res, banner);
 });
 
-router.patch("/banners/reorder", async (req, res) => {
+router.patch("/banners/reorder", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const { items } = req.body as { items: { id: string; sortOrder: number }[] };
   if (!Array.isArray(items)) {
     sendValidationError(res, "items array required"); return;
@@ -533,10 +535,10 @@ const bannerUpdateHandler = async (req: import("express").Request, res: import("
   }
   sendSuccess(res, updated);
 };
-router.patch("/banners/:id", bannerUpdateHandler);
-router.put("/banners/:id", bannerUpdateHandler);
+router.patch("/banners/:id", requirePermission(CONTENT_PERMS.manage), bannerUpdateHandler);
+router.put("/banners/:id", requirePermission(CONTENT_PERMS.manage), bannerUpdateHandler);
 
-router.delete("/banners/:id", async (req, res) => {
+router.delete("/banners/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const bannerId = req.params["id"]!;
   const [deleted] = await db.delete(bannersTable).where(eq(bannersTable.id, bannerId)).returning();
   if (!deleted) {
@@ -569,7 +571,7 @@ router.get("/flash-deals", async (_req, res) => {
   });
 });
 
-router.post("/flash-deals", async (req, res) => {
+router.post("/flash-deals", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.productId || !body.startTime || !body.endTime) {
     sendValidationError(res, "productId, startTime, endTime required"); return;
@@ -589,7 +591,7 @@ router.post("/flash-deals", async (req, res) => {
   sendCreated(res, deal);
 });
 
-router.patch("/flash-deals/:id", async (req, res) => {
+router.patch("/flash-deals/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, any> = {};
   if (body.title        !== undefined) updates.title        = body.title;
@@ -605,7 +607,7 @@ router.patch("/flash-deals/:id", async (req, res) => {
   sendSuccess(res, deal);
 });
 
-router.delete("/flash-deals/:id", async (req, res) => {
+router.delete("/flash-deals/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   await db.delete(flashDealsTable).where(eq(flashDealsTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
@@ -631,7 +633,7 @@ router.get("/promo-codes", async (_req, res) => {
   });
 });
 
-router.post("/promo-codes", async (req, res) => {
+router.post("/promo-codes", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.code) { sendValidationError(res, "code required"); return; }
   try {
@@ -655,7 +657,7 @@ router.post("/promo-codes", async (req, res) => {
   }
 });
 
-router.patch("/promo-codes/:id", async (req, res) => {
+router.patch("/promo-codes/:id", requirePermission(CONTENT_PERMS.manage), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, any> = {};
   if (body.code           !== undefined) updates.code           = String(body.code).toUpperCase().trim();

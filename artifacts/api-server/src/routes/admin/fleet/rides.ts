@@ -26,6 +26,8 @@ import { emitRideDispatchUpdate, getIO } from "../../../lib/socketio.js";
 import { emitRideUpdate } from "../../../lib/rideEvents.js";
 import { RIDE_VALID_STATUSES, getSocketRoom } from "@workspace/service-constants";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../../lib/response.js";
+import { requirePermission } from "../../../middlewares/require-permission.js";
+import { FLEET_PERMS } from "../../../middlewares/permissions-map.js";
 
 type AdminReq = AdminRequest & Request & { adminId?: string; adminName?: string };
 
@@ -138,7 +140,7 @@ router.get("/rides-enriched", async (req: Request, res: Response) => {
   });
 });
 
-router.patch("/rides/:id/status", async (req: Request, res: Response) => {
+router.patch("/rides/:id/status", requirePermission(FLEET_PERMS.manage), async (req: Request, res: Response) => {
   const { status, riderName, riderPhone } = req.body;
   const adminReq = req as AdminReq;
 
@@ -199,7 +201,7 @@ router.get("/ride-services", async (_req: Request, res: Response) => {
 });
 
 /* POST /admin/ride-services — create custom service */
-router.post("/ride-services", async (req: Request, res: Response) => {
+router.post("/ride-services", requirePermission(FLEET_PERMS.manage), async (req: Request, res: Response) => {
   const { key, name, nameUrdu, icon, description, color, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
   if (!key || !name || !icon) { sendValidationError(res, "key, name, icon are required"); return; }
   const existing = await db.select({ id: rideServiceTypesTable.id }).from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, String(key))).limit(1);
@@ -225,7 +227,7 @@ router.post("/ride-services", async (req: Request, res: Response) => {
 });
 
 /* PATCH /admin/ride-services/:id — update any field */
-router.patch("/ride-services/:id", async (req: Request, res: Response) => {
+router.patch("/ride-services/:id", requirePermission(FLEET_PERMS.manage), async (req: Request, res: Response) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
   if (!existing) { sendNotFound(res, "Service not found"); return; }
@@ -248,7 +250,7 @@ router.patch("/ride-services/:id", async (req: Request, res: Response) => {
 });
 
 /* DELETE /admin/ride-services/:id — only custom services */
-router.delete("/ride-services/:id", async (req: Request, res: Response) => {
+router.delete("/ride-services/:id", requirePermission(FLEET_PERMS.manage), async (req: Request, res: Response) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
   if (!existing) { sendNotFound(res, "Service not found"); return; }
@@ -312,7 +314,7 @@ router.get("/locations", async (_req: Request, res: Response) => {
   });
 });
 
-router.post("/locations", async (req: Request, res: Response) => {
+router.post("/locations", requirePermission(FLEET_PERMS.manage), async (req: Request, res: Response) => {
   const { name, nameUrdu, lat, lng, category = "general", icon = "📍", isActive = true, sortOrder = 0 } = req.body;
   if (!name || !lat || !lng) { sendValidationError(res, "name, lat, lng required"); return; }
   const [loc] = await db.insert(popularLocationsTable).values({

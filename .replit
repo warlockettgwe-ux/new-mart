@@ -74,8 +74,8 @@ LOG_LEVEL = "warn"
 
 [rules.formatter.fileExtensions]
 
-[rules.formatter.fileExtensions.".ts"]
-id = "module:nodejs-24/languageServer:typescript-language-server"
+[rules.formatter.fileExtensions.".tsx"]
+id = "module:nodejs-20/languageServer:typescript-language-server"
 
 [[ports]]
 localPort = 5000
