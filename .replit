@@ -32,13 +32,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm run replit-start"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
+args = "PORT_API=5000 pnpm run replit-start"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
