@@ -20,6 +20,7 @@ import {
   type AdminRequest, revokeAllUserSessions,
 } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError, sendErrorWithData } from "../../lib/response.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
 import {
   ORDER_VALID_STATUSES, RIDE_VALID_STATUSES, PARCEL_VALID_STATUSES, PHARMACY_ORDER_VALID_STATUSES,
   getSocketRoom,
@@ -28,7 +29,7 @@ import { getIO } from "../../lib/socketio.js";
 
 const router = Router();
 
-router.post("/orders", async (req, res) => {
+router.post("/orders", requirePermission("orders.manage"), async (req, res) => {
   const { userId, vendorId, type, items, total, deliveryAddress, paymentMethod, status } = req.body;
   if (!userId || typeof userId !== "string" || !userId.trim()) {
     sendValidationError(res, "userId is required");
@@ -103,7 +104,7 @@ router.get("/orders", async (req, res) => {
   });
 });
 
-router.patch("/orders/:id/status", async (req, res) => {
+router.patch("/orders/:id/status", requirePermission("orders.manage"), async (req, res) => {
   const { status } = req.body;
   const orderId = req.params["id"]!;
 
@@ -248,7 +249,7 @@ router.patch("/orders/:id/status", async (req, res) => {
   sendSuccess(res, { ...order, total: parseFloat(String(order.total)) });
 });
 
-router.post("/orders/:id/refund", async (req, res) => {
+router.post("/orders/:id/refund", requirePermission("orders.manage"), async (req, res) => {
   const { amount, reason } = req.body;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
   if (!order) { sendNotFound(res, "Order not found"); return; }
@@ -355,7 +356,7 @@ router.get("/pharmacy-orders", async (_req, res) => {
   });
 });
 
-router.patch("/pharmacy-orders/:id/status", async (req, res) => {
+router.patch("/pharmacy-orders/:id/status", requirePermission("orders.manage"), async (req, res) => {
   const { status } = req.body;
   if (!status || !(PHARMACY_ORDER_VALID_STATUSES as readonly string[]).includes(status)) {
     sendValidationError(res, `Invalid pharmacy order status "${status}". Valid statuses: ${PHARMACY_ORDER_VALID_STATUSES.join(", ")}`);
@@ -423,7 +424,7 @@ router.get("/parcel-bookings", async (_req, res) => {
   });
 });
 
-router.patch("/parcel-bookings/:id/status", async (req, res) => {
+router.patch("/parcel-bookings/:id/status", requirePermission("orders.manage"), async (req, res) => {
   const { status } = req.body;
   if (!status || !(PARCEL_VALID_STATUSES as readonly string[]).includes(status)) {
     sendValidationError(res, `Invalid parcel status "${status}". Valid statuses: ${PARCEL_VALID_STATUSES.join(", ")}`);
@@ -677,7 +678,7 @@ router.get("/orders-export", async (req, res) => {
 
 
 /* ── User Security Management ── */
-router.patch("/orders/:id/assign-rider", async (req, res) => {
+router.patch("/orders/:id/assign-rider", requirePermission("orders.manage"), async (req, res) => {
   const { riderId } = req.body as { riderId?: string };
   let riderName: string | null = null;
   let riderPhone: string | null = null;

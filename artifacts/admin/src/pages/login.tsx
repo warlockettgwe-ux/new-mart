@@ -6,6 +6,18 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+function validateUsername(value: string): string | null {
+  if (!value.trim()) return "Username is required";
+  if (value.trim().length < 3) return "Username must be at least 3 characters";
+  return null;
+}
+
+function validatePassword(value: string): string | null {
+  if (!value) return "Password is required";
+  if (value.length < 8) return "Password must be at least 8 characters";
+  return null;
+}
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const { state, login, clearError } = useAdminAuth();
@@ -15,6 +27,11 @@ export default function Login() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Field-level validation errors (shown on blur or submit)
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [touched, setTouched] = useState({ username: false, password: false });
 
   // MFA form
   const [totp, setTotp] = useState("");
@@ -42,7 +59,14 @@ export default function Login() {
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) return;
+
+    // Validate all fields on submit
+    const uErr = validateUsername(username);
+    const pErr = validatePassword(password);
+    setUsernameError(uErr);
+    setPasswordError(pErr);
+    setTouched({ username: true, password: true });
+    if (uErr || pErr) return;
 
     try {
       await login(username.trim(), password);
@@ -118,13 +142,28 @@ export default function Login() {
                     name="username"
                     placeholder="admin"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg"
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      if (touched.username) setUsernameError(validateUsername(e.target.value));
+                    }}
+                    onBlur={() => {
+                      setTouched((t) => ({ ...t, username: true }));
+                      setUsernameError(validateUsername(username));
+                    }}
+                    aria-invalid={!!usernameError}
+                    aria-describedby={usernameError ? "username-error" : undefined}
+                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${usernameError ? " border-destructive" : ""}`}
                     autoComplete="username"
                     autoFocus
                     disabled={state.isLoading}
                   />
                 </div>
+                {usernameError && (
+                  <p id="username-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    {usernameError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -138,8 +177,17 @@ export default function Login() {
                     name="password"
                     placeholder="Enter password..."
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-11 pr-12 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (touched.password) setPasswordError(validatePassword(e.target.value));
+                    }}
+                    onBlur={() => {
+                      setTouched((t) => ({ ...t, password: true }));
+                      setPasswordError(validatePassword(password));
+                    }}
+                    aria-invalid={!!passwordError}
+                    aria-describedby={passwordError ? "password-error" : undefined}
+                    className={`pl-11 pr-12 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${passwordError ? " border-destructive" : ""}`}
                     autoComplete="current-password"
                     disabled={state.isLoading}
                   />
@@ -152,11 +200,17 @@ export default function Login() {
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
+                {passwordError && (
+                  <p id="password-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    {passwordError}
+                  </p>
+                )}
               </div>
 
               <Button
                 type="submit"
-                disabled={state.isLoading || !username.trim() || !password.trim()}
+                disabled={state.isLoading}
                 className="w-full h-14 rounded-xl text-base font-bold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 transition-all"
               >
                 {state.isLoading ? (

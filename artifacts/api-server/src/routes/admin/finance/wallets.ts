@@ -23,6 +23,7 @@ import {
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../../lib/response.js";
 import { FinanceService } from "../../../services/admin-finance.service.js";
 import { AuditService } from "../../../services/admin-audit.service.js";
+import { requirePermission, requireAnyPermission } from "../../../middlewares/require-permission.js";
 
 const router = Router();
 router.get("/transactions", async (_req, res) => {
@@ -149,7 +150,7 @@ router.patch("/vendors/:id/status", async (req, res) => {
   sendSuccess(res, { ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
 
-router.post("/vendors/:id/payout", async (req, res) => {
+router.post("/vendors/:id/payout", requirePermission("finance.manage"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { amount, description } = req.body;
   const vendorId = req.params["id"]!;
@@ -189,7 +190,7 @@ router.post("/vendors/:id/payout", async (req, res) => {
   }
 });
 
-router.post("/vendors/:id/credit", async (req, res) => {
+router.post("/vendors/:id/credit", requirePermission("finance.manage"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { amount, description } = req.body;
   const vendorId = req.params["id"]!;
@@ -337,7 +338,7 @@ router.post("/riders/:id/payout", async (req, res) => {
   sendSuccess(res, { amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 
-router.post("/riders/:id/bonus", async (req, res) => {
+router.post("/riders/:id/bonus", requirePermission("finance.manage"), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -391,7 +392,7 @@ router.get("/riders/:id/ratings", async (req, res) => {
   sendSuccess(res, { ratings });
 });
 
-router.post("/riders/:id/restrict", async (req, res) => {
+router.post("/riders/:id/restrict", requirePermission("finance.manage"), async (req, res) => {
   const riderId = req.params["id"]!;
   const [user] = await db.update(usersTable)
     .set({ isRestricted: true, updatedAt: new Date() })
@@ -402,7 +403,7 @@ router.post("/riders/:id/restrict", async (req, res) => {
   sendSuccess(res, { isRestricted: true });
 });
 
-router.post("/riders/:id/unrestrict", async (req, res) => {
+router.post("/riders/:id/unrestrict", requirePermission("finance.manage"), async (req, res) => {
   const riderId = req.params["id"]!;
   const [user] = await db.update(usersTable)
     .set({ isRestricted: false, updatedAt: new Date() })
@@ -433,7 +434,7 @@ router.get("/withdrawal-requests", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/:id/approve ─── */
-router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
+router.patch("/withdrawal-requests/:id/approve", requirePermission("finance.approve"), async (req, res) => {
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -463,7 +464,7 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/:id/reject ─── */
-router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
+router.patch("/withdrawal-requests/:id/reject", requirePermission("finance.approve"), async (req, res) => {
   const { reason } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -504,7 +505,7 @@ router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/batch-approve ─── */
-router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
+router.patch("/withdrawal-requests/batch-approve", requirePermission("finance.approve"), async (req, res) => {
   const { ids } = req.body as { ids: string[] };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids required"); return; }
   const results: unknown[] = [];
@@ -526,7 +527,7 @@ router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/batch-reject ─── */
-router.patch("/withdrawal-requests/batch-reject", async (req, res) => {
+router.patch("/withdrawal-requests/batch-reject", requirePermission("finance.approve"), async (req, res) => {
   const { ids, reason } = req.body as { ids: string[]; reason: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids required"); return; }
   const rejReason = (reason || "Admin batch rejected").trim();
@@ -574,7 +575,7 @@ router.get("/deposit-requests", async (req, res) => {
 });
 
 /* ── PATCH /admin/deposit-requests/:id/approve — Approve a rider deposit (credits wallet, atomic) ─── */
-router.patch("/deposit-requests/:id/approve", async (req, res) => {
+router.patch("/deposit-requests/:id/approve", requirePermission("finance.approve"), async (req, res) => {
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
 
@@ -637,7 +638,7 @@ router.patch("/deposit-requests/:id/approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/deposit-requests/:id/reject — Reject a rider deposit (atomic state transition) ─── */
-router.patch("/deposit-requests/:id/reject", async (req, res) => {
+router.patch("/deposit-requests/:id/reject", requirePermission("finance.approve"), async (req, res) => {
   const { reason } = req.body;
   const txId = req.params["id"]!;
 
@@ -671,7 +672,7 @@ router.patch("/deposit-requests/:id/reject", async (req, res) => {
 });
 
 /* ── POST /admin/deposit-requests/bulk-approve — Bulk approve customer pending deposits (all-or-nothing atomic) ─── */
-router.post("/deposit-requests/bulk-approve", async (req, res) => {
+router.post("/deposit-requests/bulk-approve", requirePermission("finance.approve"), async (req, res) => {
   const { ids, refNo } = req.body as { ids: string[]; refNo?: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids array is required"); return; }
   const uniqueIds = [...new Set(ids)];
@@ -730,7 +731,7 @@ router.post("/deposit-requests/bulk-approve", async (req, res) => {
 });
 
 /* ── POST /admin/deposit-requests/bulk-reject — Bulk reject customer pending deposits (all-or-nothing atomic) ─── */
-router.post("/deposit-requests/bulk-reject", async (req, res) => {
+router.post("/deposit-requests/bulk-reject", requirePermission("finance.approve"), async (req, res) => {
   const { ids, reason } = req.body as { ids: string[]; reason: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids array is required"); return; }
   if (!reason?.trim()) { sendValidationError(res, "reason is required"); return; }
@@ -785,7 +786,7 @@ router.post("/deposit-requests/bulk-reject", async (req, res) => {
 });
 
 /* ── GET /admin/all-notifications ─────────── */
-router.post("/riders/:id/credit", async (req, res) => {
+router.post("/riders/:id/credit", requirePermission("finance.manage"), async (req, res) => {
   const { amount, description, type } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -812,7 +813,7 @@ router.post("/riders/:id/credit", async (req, res) => {
   );
   sendSuccess(res, { amount: amt, newBalance: parseFloat(updated?.walletBalance ?? "0") });
 });
-router.patch("/vendors/:id/commission", async (req, res) => {
+router.patch("/vendors/:id/commission", requirePermission("finance.manage"), async (req, res) => {
   const { commissionPct } = req.body as { commissionPct: number };
   if (commissionPct === undefined || isNaN(Number(commissionPct))) {
     sendValidationError(res, "commissionPct required"); return;
@@ -827,7 +828,7 @@ router.patch("/vendors/:id/commission", async (req, res) => {
 });
 
 /* ── POST /admin/riders/:id/override-suspension — override auto-suspension ── */
-router.post("/riders/:id/override-suspension", async (req, res) => {
+router.post("/riders/:id/override-suspension", requirePermission("finance.manage"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -853,7 +854,7 @@ router.post("/riders/:id/override-suspension", async (req, res) => {
 });
 
 /* ── POST /admin/vendors/:id/override-suspension — override auto-suspension ─ */
-router.post("/vendors/:id/override-suspension", async (req, res) => {
+router.post("/vendors/:id/override-suspension", requirePermission("finance.manage"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
