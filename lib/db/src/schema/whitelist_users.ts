@@ -1,24 +1,16 @@
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { adminAccountsTable } from "./admin_accounts";
 
-/**
- * whitelist_users — OTP bypass whitelist for testers and App Store reviewers.
- * When a phone or email appears here, the auth system accepts OTP "000000"
- * (or the configured bypass code) without sending a real SMS/email.
- *
- * This is separate from the global OTP suspension (platform_settings key
- * "security_otp_disabled") — it allows per-identity bypass while the
- * rest of the world still receives real OTPs.
- */
 export const whitelistUsersTable = pgTable("whitelist_users", {
   id:          text("id").primaryKey(),
-  identifier:  text("identifier").notNull().unique(), /* phone or email */
-  label:       text("label"),                         /* human-readable note e.g. "App Store reviewer" */
+  identifier:  text("identifier").notNull().unique(),
+  label:       text("label"),
   bypassCode:  text("bypass_code").notNull().default("000000"),
   isActive:    boolean("is_active").notNull().default(true),
-  expiresAt:   timestamp("expires_at"),               /* null = never expires */
-  createdBy:   text("created_by"),                    /* admin id who added this */
+  expiresAt:   timestamp("expires_at"),
+  createdBy:   text("created_by").references(() => adminAccountsTable.id, { onDelete: "set null" }),
   createdAt:   timestamp("created_at").notNull().defaultNow(),
   updatedAt:   timestamp("updated_at").notNull().defaultNow(),
 });

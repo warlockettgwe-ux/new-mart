@@ -1529,6 +1529,8 @@ export interface OtpWhitelistEntry {
 export interface OtpWhitelistResponse {
   entries: OtpWhitelistEntry[];
   total?: number;
+  page?: number;
+  pages?: number;
 }
 
 export interface AddOtpWhitelistInput {
@@ -1546,12 +1548,10 @@ export interface UpdateOtpWhitelistInput {
   expiresAt?: string | null;
 }
 
-export const useOtpWhitelist = () =>
-  /* The generic on `useQuery` removes the `any` that previously leaked
-     into every consumer of `entries`. */
+export const useOtpWhitelist = (page = 1) =>
   useQuery<OtpWhitelistResponse>({
-    queryKey: ["admin-otp-whitelist"],
-    queryFn: () => fetcher("/otp/whitelist"),
+    queryKey: ["admin-otp-whitelist", page],
+    queryFn: () => fetcher(`/otp/whitelist?page=${page}`),
     refetchInterval: 30_000,
   });
 
@@ -1583,6 +1583,52 @@ export const useDeleteOtpWhitelist = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };
+
+// ══════════════════════════════════════════════════════
+// OTP ADMIN TOOLS: GENERATE + VERIFY
+// ══════════════════════════════════════════════════════
+
+export interface GenerateOtpInput {
+  /** userId, phone, or email */
+  identifier: string;
+}
+
+export interface GenerateOtpResult {
+  otp: string;
+  expiresAt: string;
+  userId: string;
+  phone: string | null;
+  email: string | null;
+  name: string | null;
+}
+
+export const useAdminGenerateOtp = () =>
+  useMutation<GenerateOtpResult, Error, GenerateOtpInput>({
+    mutationFn: (data) =>
+      fetcher("/otp/generate", { method: "POST", body: JSON.stringify(data) }),
+  });
+
+export interface VerifyOtpInput {
+  /** userId, phone, or email */
+  identifier: string;
+  otp: string;
+}
+
+export interface VerifyOtpResult {
+  valid: boolean;
+  reason?: string;
+  userId?: string;
+  phone?: string | null;
+  email?: string | null;
+  name?: string | null;
+  expiresAt?: string | null;
+}
+
+export const useAdminVerifyOtp = () =>
+  useMutation<VerifyOtpResult, Error, VerifyOtpInput>({
+    mutationFn: (data) =>
+      fetcher("/otp/verify", { method: "POST", body: JSON.stringify(data) }),
+  });
 
 // ══════════════════════════════════════════════════════
 // USER SESSIONS (Remote logout / session revocation)

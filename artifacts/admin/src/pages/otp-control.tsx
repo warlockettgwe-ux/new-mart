@@ -36,7 +36,22 @@ import {
   useAddOtpWhitelist,
   useUpdateOtpWhitelist,
   useDeleteOtpWhitelist,
+  useAdminGenerateOtp,
+  useAdminVerifyOtp,
+  type GenerateOtpResult,
+  type VerifyOtpResult,
 } from "@/hooks/use-admin";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { KeyRound, ShieldCheck } from "lucide-react";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    CONSTANTS & TYPES
@@ -116,7 +131,9 @@ type OtpWhitelistEntry = {
 type OtpAuditEvent =
   | "login_otp_bypass"
   | "login_global_otp_bypass"
-  | "otp_send_bypassed";
+  | "otp_send_bypassed"
+  | "admin_otp_global_disable"
+  | "admin_otp_global_restore";
 
 type AuditRow = {
   id: string;
@@ -162,9 +179,6 @@ function fmtDate(iso: string): string {
   return d.toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function generateBypassCode(): string {
-  return Math.floor(100_000 + Math.random() * 900_000).toString();
-}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    HOOKS
@@ -271,14 +285,16 @@ export default function OtpControl() {
     try {
       const d = await api("GET", "/otp/audit?page=1");
       if (d?.data?.entries) {
+        const AUDIT_EVENTS: OtpAuditEvent[] = [
+          "login_otp_bypass",
+          "login_global_otp_bypass",
+          "otp_send_bypassed",
+          "admin_otp_global_disable",
+          "admin_otp_global_restore",
+        ];
         const bypass = (d.data.entries as AuditRow[])
-          .filter(
-            (e) =>
-              e.event === "login_otp_bypass" ||
-              e.event === "login_global_otp_bypass" ||
-              e.event === "otp_send_bypassed",
-          )
-          .slice(0, 20);
+          .filter((e) => AUDIT_EVENTS.includes(e.event))
+          .slice(0, 50);
         setAuditRows(bypass);
       }
     } finally {
@@ -557,6 +573,8 @@ export default function OtpControl() {
     login_otp_bypass: "Per-user bypass",
     login_global_otp_bypass: "Global suspension",
     otp_send_bypassed: "OTP send bypassed",
+    admin_otp_global_disable: "Admin: OTP disabled",
+    admin_otp_global_restore: "Admin: OTP restored",
   };
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -876,7 +894,11 @@ export default function OtpControl() {
                   className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                     row.event === "login_otp_bypass"
                       ? "bg-blue-500"
-                      : "bg-orange-500"
+                      : row.event === "admin_otp_global_disable"
+                        ? "bg-red-500"
+                        : row.event === "admin_otp_global_restore"
+                          ? "bg-green-500"
+                          : "bg-orange-500"
                   }`}
                 />
                 <span className="font-mono text-muted-foreground">
@@ -916,6 +938,12 @@ export default function OtpControl() {
 
       {/* ── 4. WHITELIST ────────────────────────────────────────────────── */}
       <WhitelistSection />
+
+      {/* ── 5. GENERATE OTP ─────────────────────────────────────────────── */}
+      <GenerateOtpSection />
+
+      {/* ── 6. VERIFY OTP ───────────────────────────────────────────────── */}
+      <VerifyOtpSection />
     </div>
   );
 }
@@ -935,13 +963,13 @@ function WhitelistSection() {
   const [label, setLabel] = useState("");
 
   /**
-   * BUG FIX #10 — `bypassCode` is always a `string` from `useState`; the
-   * optional-chaining operator (`?.`) on a guaranteed non-nullable string
-   * was misleading and semantically incorrect. Removed for clarity.
+   * C-1 FIX — `bypassCode` is left empty by default. The backend generates a
+   * CSPRNG code when no bypass code is supplied, eliminating the previous
+   * `Math.random()`-based `generateBypassCode()` which is not cryptographically
+   * secure. Admins may still enter a custom 6-digit code if needed.
    */
-  const [bypassCode, setBypassCode] = useState<string>(() =>
-    generateBypassCode(),
-  );
+  const [bypassCode, setBypassCode] = useState<string>("");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; identifier: string } | null>(null);
   const [expiresAt, setExpiresAt] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -953,11 +981,13 @@ function WhitelistSection() {
       return;
     }
 
-    const code = bypassCode.trim() || generateBypassCode();
-    if (!BYPASS_CODE_REGEX.test(code)) {
+    /* Validate only when the admin has entered a custom code.
+       If the field is empty, the backend auto-generates a CSPRNG code. */
+    const code = bypassCode.trim();
+    if (code && !BYPASS_CODE_REGEX.test(code)) {
       toast({
         title: "Invalid bypass code",
-        description: "Use a 6-digit numeric code.",
+        description: "Use a 6-digit numeric code, or leave blank to auto-generate.",
         variant: "destructive",
       });
       return;
@@ -965,26 +995,30 @@ function WhitelistSection() {
 
     setAdding(true);
     try {
-      await addEntry.mutateAsync({
+      const result = await addEntry.mutateAsync({
         identifier: identifier.trim(),
         label: label.trim() || undefined,
-        bypassCode: code,
+        /* Omit bypassCode entirely when empty — server generates CSPRNG. */
+        bypassCode: code || undefined,
         /**
          * `<input type="datetime-local">` returns a naive "YYYY-MM-DDTHH:mm"
          * string with no timezone. Sending it as-is means the server parses it
-         * as UTC while the admin intended local time — a one-time entry set to
-         * "expire at 5pm" would actually expire at 10pm in PKT (+05:00).
-         * Wrapping via `Date → toISOString()` makes the wire format unambiguous.
+         * as UTC while the admin intended local time. Wrapping via `Date →
+         * toISOString()` makes the wire format unambiguous.
          */
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
       });
+
+      /* The response now includes the server-generated (or echoed) bypass code. */
+      const serverCode: string = result?.data?.entry?.bypassCode ?? code ?? "—";
+
       toast({
         title: "Added to whitelist",
-        description: `Bypass code ${code} is active.`,
+        description: `Bypass code: ${serverCode} is active.`,
       });
       setIdentifier("");
       setLabel("");
-      setBypassCode(generateBypassCode());
+      setBypassCode("");
       setExpiresAt("");
     } catch (e: unknown) {
       toast({
@@ -1015,8 +1049,14 @@ function WhitelistSection() {
     }
   }
 
-  async function handleDelete(id: string, entryIdentifier: string) {
-    if (!confirm(`Remove "${entryIdentifier}" from whitelist?`)) return;
+  function handleDelete(id: string, entryIdentifier: string) {
+    setPendingDelete({ id, identifier: entryIdentifier });
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const { id } = pendingDelete;
+    setPendingDelete(null);
     try {
       await deleteEntry.mutateAsync(id);
       toast({ title: "Removed from whitelist" });
@@ -1058,9 +1098,10 @@ function WhitelistSection() {
         />
         <Input
           className="rounded-xl h-9 text-sm"
-          placeholder="Bypass code (6 digits)"
+          placeholder="Bypass code (6 digits — blank = auto-generate)"
           value={bypassCode}
           onChange={(e) => setBypassCode(e.target.value)}
+          maxLength={6}
         />
         <Input
           className="rounded-xl h-9 text-sm"
@@ -1163,6 +1204,218 @@ function WhitelistSection() {
       >
         <RefreshCw className="w-3 h-3 mr-1" /> Refresh
       </Button>
+
+      {/* Delete confirmation dialog — replaces window.confirm() (R-6) */}
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from whitelist?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove{" "}
+              <span className="font-semibold">{pendingDelete?.identifier}</span>{" "}
+              from the OTP whitelist. They will be required to use real OTPs for
+              future logins.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmDelete}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GENERATE OTP SECTION (R-8)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function GenerateOtpSection() {
+  const { toast } = useToast();
+  const generate = useAdminGenerateOtp();
+  const [identifier, setIdentifier] = useState("");
+  const [result, setResult] = useState<GenerateOtpResult | null>(null);
+
+  async function handleGenerate() {
+    if (!identifier.trim()) {
+      toast({ title: "Identifier required", description: "Enter a userId, phone, or email.", variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await generate.mutateAsync({ identifier: identifier.trim() });
+      setResult(res);
+      toast({ title: "OTP Generated", description: `OTP for ${res.phone ?? res.email ?? res.userId} is ready.` });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: errorMessage(e, "Could not generate OTP."), variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card>
+      <SectionTitle icon={KeyRound} label="Generate OTP for User" color="text-teal-700" />
+      <p className="text-xs text-muted-foreground mb-4">
+        Generate a fresh OTP for any user. The code is displayed here so you can share it with the user directly — useful when SMS delivery fails.
+      </p>
+
+      <div className="flex gap-2 mb-4">
+        <Input
+          className="flex-1 text-sm"
+          placeholder="userId, phone, or email"
+          value={identifier}
+          onChange={(e) => {
+            setIdentifier(e.target.value);
+            setResult(null);
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") handleGenerate(); }}
+        />
+        <Button
+          size="sm"
+          onClick={handleGenerate}
+          disabled={generate.isPending || !identifier.trim()}
+          className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+        >
+          {generate.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <KeyRound className="w-3.5 h-3.5" />
+          )}
+          Generate
+        </Button>
+      </div>
+
+      {result && (
+        <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-teal-700 font-medium">User</p>
+            <p className="text-sm font-semibold text-foreground">
+              {result.name ?? result.phone ?? result.email ?? result.userId}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-teal-700 font-medium">OTP Code</p>
+            <p className="font-mono text-2xl font-bold tracking-widest text-teal-800 bg-white border border-teal-300 rounded-lg px-4 py-1">
+              {result.otp}
+            </p>
+          </div>
+          <p className="text-[10px] text-teal-600">
+            Expires: {fmtDate(result.expiresAt)}
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   VERIFY OTP SECTION (R-8 + C-2)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function VerifyOtpSection() {
+  const { toast } = useToast();
+  const verify = useAdminVerifyOtp();
+  const [identifier, setIdentifier] = useState("");
+  const [otp, setOtp] = useState("");
+  const [result, setResult] = useState<VerifyOtpResult | null>(null);
+
+  async function handleVerify() {
+    if (!identifier.trim()) {
+      toast({ title: "Identifier required", description: "Enter a userId, phone, or email.", variant: "destructive" });
+      return;
+    }
+    if (!otp.trim()) {
+      toast({ title: "OTP required", variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await verify.mutateAsync({ identifier: identifier.trim(), otp: otp.trim() });
+      setResult(res);
+    } catch (e: unknown) {
+      toast({ title: "Error", description: errorMessage(e, "Could not verify OTP."), variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card>
+      <SectionTitle icon={ShieldCheck} label="Verify OTP" color="text-violet-700" />
+      <p className="text-xs text-muted-foreground mb-4">
+        Check whether an OTP code is valid for a given user without consuming it. Useful for debugging authentication issues.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+        <Input
+          className="text-sm"
+          placeholder="userId, phone, or email"
+          value={identifier}
+          onChange={(e) => { setIdentifier(e.target.value); setResult(null); }}
+        />
+        <Input
+          className="text-sm font-mono"
+          placeholder="OTP code (4–8 digits)"
+          value={otp}
+          onChange={(e) => { setOtp(e.target.value); setResult(null); }}
+          maxLength={8}
+          onKeyDown={(e) => { if (e.key === "Enter") handleVerify(); }}
+        />
+      </div>
+
+      <Button
+        size="sm"
+        onClick={handleVerify}
+        disabled={verify.isPending || !identifier.trim() || !otp.trim()}
+        className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white mb-4"
+      >
+        {verify.isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <ShieldCheck className="w-3.5 h-3.5" />
+        )}
+        Verify OTP
+      </Button>
+
+      {result !== null && (
+        <div
+          className={`rounded-xl border p-4 space-y-1.5 ${
+            result.valid
+              ? "bg-green-50 border-green-200"
+              : "bg-red-50 border-red-200"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {result.valid ? (
+              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+            )}
+            <p className={`text-sm font-bold ${result.valid ? "text-green-800" : "text-red-800"}`}>
+              {result.valid ? "OTP is valid" : "OTP is invalid"}
+            </p>
+          </div>
+          {!result.valid && result.reason && (
+            <p className="text-xs text-red-700 pl-7">{result.reason}</p>
+          )}
+          {result.name || result.phone || result.email ? (
+            <p className="text-xs text-muted-foreground pl-7">
+              User: {result.name ?? result.phone ?? result.email}
+            </p>
+          ) : null}
+          {result.expiresAt && (
+            <p className="text-xs text-muted-foreground pl-7">
+              Expires: {fmtDate(result.expiresAt)}
+            </p>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
