@@ -1,0 +1,100 @@
+Please perform a COMPLETE PROFESSIONAL AUDIT of my Prey Admin Panel.
+
+## 🔍 What to Audit:
+
+### 1. Authentication & Security
+- [ ] Login page: Email/password validation
+- [ ] Session management: Token storage, expiry
+- [ ] Role-based access control (RBAC)
+- [ ] Forgot password flow
+- [ ] Two-factor authentication (if exists)
+- [ ] Logout functionality
+
+### 2. Dashboard
+- [ ] Statistics cards: Counts are correct from database
+- [ ] Charts/Graphs: Data loading properly
+- [ ] Recent activity feed
+- [ ] Date range filters working
+- [ ] Real-time updates (WebSocket/Socket.io)
+
+### 3. User Management
+- [ ] List users with pagination
+- [ ] Search/filter users
+- [ ] Add new user (all fields validate)
+- [ ] Edit user details
+- [ ] Delete user (with confirmation)
+- [ ] Change user role/permissions
+- [ ] Ban/Unban user
+- [ ] Export users data
+
+### 4. Content Management (if applicable)
+- [ ] CRUD operations on content
+- [ ] Image/file upload working
+- [ ] Editor (rich text) functionality
+- [ ] Draft/publish system
+- [ ] Categories/tags management
+
+### 5. Reports & Analytics
+- [ ] Generate reports (PDF/CSV)
+- [ ] Email report sending
+- [ ] Schedule reports
+- [ ] Analytics data accuracy
+
+### 6. Settings
+- [ ] General settings save/load
+- [ ] Email/SMTP configuration
+- [ ] API keys management
+- [ ] Backup/Restore functionality
+
+### 7. API Endpoints (ALL routes under /api/admin/*)
+- [ ] GET endpoints return 200 with correct data
+- [ ] POST endpoints create resources
+- [ ] PUT/PATCH endpoints update resources
+- [ ] DELETE endpoints remove resources
+- [ ] Request validation working
+- [ ] Error responses (400, 401, 403, 404, 500)
+
+### 8. Database
+- [ ] All tables have proper indexes
+- [ ] Foreign key constraints
+- [ ] Soft delete implemented (if needed)
+- [ ] Audit logs capturing actions
+- [ ] No duplicate records
+- [ ] Data consistency across related tables
+
+### 9. Frontend UI/UX
+- [ ] Responsive on desktop, tablet, mobile
+- [ ] Loading states everywhere
+- [ ] Error messages user-friendly
+- [ ] Confirmation modals for destructive actions
+- [ ] Toast notifications working
+- [ ] Form validation (client-side)
+- [ ] Dark mode (if exists)
+
+### 10. Performance
+- [ ] Page load time < 2 seconds
+- [ ] API response time < 500ms
+- [ ] N+1 queries check
+- [ ] Pagination working (no data overload)
+
+## 🔧 Audit Process:
+
+1. **Enable App Testing** first (Settings → Advanced → App Testing ON)
+
+2. **Run Security Scan** (Project → Security Center → Run Agent Security Scan)
+
+3. **Manually test each feature** using App Testing:
+   - Create test user with role "auditor@prey.com"
+   - Login and navigate ALL pages
+   - Click every button
+   - Submit all forms
+   - Try invalid inputs (XSS, SQL injection attempts)
+   - Try unauthorised actions
+
+4. **Check API endpoints:**
+   ```bash
+   # Auto-test each endpoint
+   GET /api/admin/users
+   POST /api/admin/users
+   GET /api/admin/reports
+   ... continue for all routes
