@@ -309,7 +309,7 @@ router.patch("/riders/:id/status", requirePermission(FINANCE_PERMS.manage), asyn
   sendSuccess(res, { ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
 
-router.post("/riders/:id/payout", async (req, res) => {
+router.post("/riders/:id/payout", requirePermission(FINANCE_PERMS.manage), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;

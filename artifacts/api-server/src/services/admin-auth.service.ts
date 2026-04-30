@@ -35,16 +35,18 @@ export async function adminLogin(
   tempToken?: string;
   error?: string;
 }> {
-  // Find admin by username or name
+  // Find admin by username, name, or email (case-insensitive)
   const admins = await db
     .select()
     .from(adminAccountsTable)
     .where(eq(adminAccountsTable.isActive, true));
 
+  const needle = username.toLowerCase();
   const admin = admins.find(
     (a) =>
-      (a.username && a.username.toLowerCase() === username.toLowerCase()) ||
-      a.name.toLowerCase() === username.toLowerCase()
+      (a.username && a.username.toLowerCase() === needle) ||
+      a.name.toLowerCase() === needle ||
+      (a.email && a.email.toLowerCase() === needle)
   );
 
   if (!admin) {

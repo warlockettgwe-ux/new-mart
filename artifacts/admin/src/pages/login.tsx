@@ -1,17 +1,24 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ShoppingBag, Lock, User, ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { ShoppingBag, Lock, Mail, ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+/**
+ * Login form schema — mirrors server-side validation rules.
+ * Admin accounts may log in with either their email address or their username;
+ * the server-side adminLogin service resolves both. The `email` field is
+ * validated as a proper email address so the user gets instant feedback for
+ * obvious typos before the request is ever sent.
+ */
 const loginSchema = z.object({
-  username: z
+  email: z
     .string()
-    .min(1, "Username is required")
-    .min(3, "Username must be at least 3 characters"),
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
   password: z
     .string()
     .min(1, "Password is required")
@@ -26,7 +33,7 @@ function parseLoginErrors(values: LoginFields): LoginErrors {
   if (result.success) return {};
   const flat = result.error.flatten().fieldErrors;
   return {
-    username: flat.username?.[0],
+    email: flat.email?.[0],
     password: flat.password?.[0],
   };
 }
@@ -36,12 +43,12 @@ export default function Login() {
   const { state, login, clearError } = useAdminAuth();
   const { toast } = useToast();
 
-  const [username, setUsername] = useState("admin");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const [errors, setErrors] = useState<LoginErrors>({});
-  const [touched, setTouched] = useState({ username: false, password: false });
+  const [touched, setTouched] = useState({ email: false, password: false });
 
   const [totp, setTotp] = useState("");
   const [tempToken, setTempToken] = useState<string | null>(null);
@@ -71,14 +78,15 @@ export default function Login() {
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const values: LoginFields = { username, password };
+    const values: LoginFields = { email, password };
     const allErrors = parseLoginErrors(values);
     setErrors(allErrors);
-    setTouched({ username: true, password: true });
-    if (allErrors.username || allErrors.password) return;
+    setTouched({ email: true, password: true });
+    if (allErrors.email || allErrors.password) return;
 
     try {
-      await login(username.trim(), password);
+      // The server login endpoint accepts email or username as the `username` field
+      await login(email.trim().toLowerCase(), password);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
     } catch (err: any) {
       if (err.requiresMfa && err.tempToken) {
@@ -94,7 +102,7 @@ export default function Login() {
     e.preventDefault();
     if (!totp.trim() || !tempToken) return;
     try {
-      await login(username, password, totp, tempToken);
+      await login(email.trim().toLowerCase(), password, totp, tempToken);
       toast({ title: "Welcome back", description: "Successfully logged into admin panel." });
     } catch (_err) {
       // Handled by the error effect
@@ -127,44 +135,45 @@ export default function Login() {
             </div>
             <h1 className="font-display text-3xl font-bold text-foreground">AJKMart Admin</h1>
             <p className="text-muted-foreground mt-2 font-medium">
-              {step === "credentials" ? "Sign in with your credentials" : "Enter your authenticator code"}
+              {step === "credentials" ? "Sign in with your email" : "Enter your authenticator code"}
             </p>
           </div>
 
           {step === "credentials" ? (
             <form onSubmit={handleCredentialsSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="username">Username</label>
+                <label className="text-sm font-semibold text-foreground ml-1" htmlFor="email">Email</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-muted-foreground" />
+                    <Mail className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <Input
-                    id="username"
-                    type="text"
-                    name="username"
-                    placeholder="admin"
-                    value={username}
+                    id="email"
+                    type="email"
+                    name="email"
+                    inputMode="email"
+                    placeholder="you@example.com"
+                    value={email}
                     onChange={(e) => {
-                      setUsername(e.target.value);
-                      if (touched.username) validateField("username", { username: e.target.value, password });
+                      setEmail(e.target.value);
+                      if (touched.email) validateField("email", { email: e.target.value, password });
                     }}
                     onBlur={() => {
-                      setTouched((t) => ({ ...t, username: true }));
-                      validateField("username", { username, password });
+                      setTouched((t) => ({ ...t, email: true }));
+                      validateField("email", { email, password });
                     }}
-                    aria-invalid={!!errors.username}
-                    aria-describedby={errors.username ? "username-error" : undefined}
-                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.username ? " border-destructive" : ""}`}
-                    autoComplete="username"
+                    aria-invalid={!!errors.email}
+                    aria-describedby={errors.email ? "email-error" : undefined}
+                    className={`pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg${errors.email ? " border-destructive" : ""}`}
+                    autoComplete="email"
                     autoFocus
                     disabled={state.isLoading}
                   />
                 </div>
-                {errors.username && (
-                  <p id="username-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
+                {errors.email && (
+                  <p id="email-error" className="flex items-center gap-1 text-sm text-destructive ml-1" role="alert">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    {errors.username}
+                    {errors.email}
                   </p>
                 )}
               </div>
@@ -183,11 +192,11 @@ export default function Login() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      if (touched.password) validateField("password", { username, password: e.target.value });
+                      if (touched.password) validateField("password", { email, password: e.target.value });
                     }}
                     onBlur={() => {
                       setTouched((t) => ({ ...t, password: true }));
-                      validateField("password", { username, password });
+                      validateField("password", { email, password });
                     }}
                     aria-invalid={!!errors.password}
                     aria-describedby={errors.password ? "password-error" : undefined}
@@ -291,10 +300,9 @@ export default function Login() {
           <p className="text-xs text-muted-foreground text-center mt-6 leading-relaxed">
             {step === "credentials" ? (
               <>
-                Default super admin: <span className="font-semibold">admin</span> /{" "}
-                <span className="font-semibold">Toqeerkhan@123.com</span>.
+                Sign in with your admin email address.
                 <br />
-                You can update them from the post-login popup.
+                Contact your system administrator if you need access.
               </>
             ) : (
               <>
