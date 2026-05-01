@@ -2,16 +2,65 @@
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, "..");
 
+// Load .env file and parse environment variables
+function loadEnvFile(envPath) {
+  const envVars = {};
+  if (!fs.existsSync(envPath)) {
+    console.warn(`Warning: ${envPath} not found`);
+    return envVars;
+  }
+  
+  const content = fs.readFileSync(envPath, "utf8");
+  const lines = content.split("\n");
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+    
+    const key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+    
+    // Remove surrounding quotes if present
+    if ((value.startsWith('"') && value.endsWith('"')) || 
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    
+    envVars[key] = value;
+  }
+  
+  return envVars;
+}
+
+// Load .env from root directory
+const envVars = loadEnvFile(path.join(root, ".env"));
+
 const services = {
   api: {
     filter: "@workspace/api-server",
     script: "dev",
-    env: { PORT: "8080", NODE_ENV: "development" },
+    env: { 
+      PORT: "8080", 
+      NODE_ENV: "development",
+      // These will be loaded from .env if present, but can be overridden here
+      DATABASE_URL: envVars.DATABASE_URL || "",
+      JWT_SECRET: envVars.JWT_SECRET || "",
+      ADMIN_JWT_SECRET: envVars.ADMIN_JWT_SECRET || "",
+      ADMIN_REFRESH_SECRET: envVars.ADMIN_REFRESH_SECRET || "",
+      VENDOR_JWT_SECRET: envVars.VENDOR_JWT_SECRET || "",
+      RIDER_JWT_SECRET: envVars.RIDER_JWT_SECRET || "",
+      SESSION_SECRET: envVars.SESSION_SECRET || "",
+    },
     label: "API server",
   },
   admin: {
@@ -76,7 +125,22 @@ function getTargets(name) {
 function spawnService(name) {
   const service = services[name];
   if (!service) throw new Error(`Unknown service ${name}`);
-  const env = { ...process.env, ...service.env };
+  
+  // Merge: process.env → loaded .env → service.env (service.env has highest priority)
+  const env = { ...process.env, ...envVars, ...service.env };
+  
+  // Validate critical environment variables for API service
+  if (name === "api") {
+    const criticalVars = ["DATABASE_URL", "JWT_SECRET"];
+    const missing = criticalVars.filter(v => !env[v]);
+    if (missing.length > 0) {
+      console.error(`❌ ERROR: Missing critical environment variables: ${missing.join(", ")}`);
+      console.error(`   Make sure .env file exists in ${root} with these variables set.`);
+      throw new Error("Missing required environment variables for API server");
+    }
+    console.log(`✅ Environment variables loaded for API server`);
+  }
+  
   const args = ["--filter", service.filter, service.script];
   console.log(`Starting ${service.label} with: pnpm ${args.join(" ")}`);
   const child = spawn("pnpm", args, {
