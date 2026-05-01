@@ -264,7 +264,6 @@ async function profileCodespace() {
   const vendorPort = process.env.PORT_VENDOR || "5174";
   const riderPort = process.env.PORT_RIDER || "5175";
   const ajkPort = process.env.PORT_AJK || "19006";
-  const sandboxPort = process.env.PORT_SANDBOX || "8081";
 
   const publicUrl = (port) =>
     codespaceName ? `https://${codespaceName}-${port}.app.github.dev` : `http://localhost:${port}`;
@@ -274,7 +273,7 @@ async function profileCodespace() {
 
   // Best-effort: mark public ports
   const ghAvailable = spawnSync("which", ["gh"], { stdio: "ignore" }).status === 0;
-  const portsToPublish = [apiPort, adminPort, vendorPort, riderPort, ajkPort, sandboxPort];
+  const portsToPublish = [apiPort, adminPort, vendorPort, riderPort, ajkPort];
   if (ghAvailable && codespaceName) {
     for (const p of portsToPublish) {
       const cmd = `gh codespace ports visibility ${p}:public --codespace ${codespaceName}`;
@@ -306,7 +305,6 @@ async function profileCodespace() {
         REPL_ID: process.env.REPL_ID || codespaceName || "codespace",
       },
     },
-    { name: "sandbox", filter: "@workspace/mockup-sandbox", script: "dev", env: { PORT: sandboxPort, HOST: "0.0.0.0", BASE_PATH: "/__mockup" } },
   ];
 
   const children = [];
@@ -323,7 +321,6 @@ async function profileCodespace() {
     ["vendor", vendorPort, `${publicUrl(vendorPort)}/vendor/`],
     ["rider", riderPort, `${publicUrl(riderPort)}/rider/`],
     ["ajkmart (web)", ajkPort, publicUrl(ajkPort) + "/"],
-    ["mockup-sandbox", sandboxPort, `${publicUrl(sandboxPort)}/__mockup`],
   ]);
   if (!dryRun) attachShutdown(children);
 }
